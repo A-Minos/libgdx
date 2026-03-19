@@ -48,6 +48,7 @@ public class HieroSettings {
 	private boolean font2Active = false;
 	private String font2File = "";
 	private int renderType = RenderType.FreeType.ordinal();
+	private List<String> fallbackFonts = new ArrayList<>();
 
 	public HieroSettings () {
 	}
@@ -102,6 +103,8 @@ public class HieroSettings {
 					nativeRendering = Boolean.parseBoolean(value);
 				} else if (name.equals("glyph.text")) {
 					glyphText = value;
+				} else if (name.startsWith("fallback.font.")) {
+					fallbackFonts.add(value);
 				} else if (name.equals(RENDER_TYPE)) {
 					renderType = Integer.parseInt(value);
 				} else if (name.equals("effect.class")) {
@@ -340,6 +343,9 @@ public class HieroSettings {
 		out.println();
 		out.println(RENDER_TYPE + "=" + renderType);
 		out.println();
+		for (int i = 0; i < fallbackFonts.size(); i++)
+			out.println("fallback.font." + i + "=" + fallbackFonts.get(i));
+		if (!fallbackFonts.isEmpty()) out.println();
 		for (Iterator iter = effects.iterator(); iter.hasNext();) {
 			ConfigurableEffect effect = (ConfigurableEffect)iter.next();
 			out.println("effect.class=" + effect.getClass().getName());
@@ -358,5 +364,13 @@ public class HieroSettings {
 
 	public int getRenderType () {
 		return renderType;
+	}
+
+	public List<String> getFallbackFonts () {
+		return fallbackFonts;
+	}
+
+	public void setFallbackFonts (List<String> fallbackFonts) {
+		this.fallbackFonts = new ArrayList<>(fallbackFonts);
 	}
 }

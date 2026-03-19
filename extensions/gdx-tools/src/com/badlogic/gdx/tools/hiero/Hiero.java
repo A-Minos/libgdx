@@ -28,6 +28,7 @@ import java.util.prefs.Preferences;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.DefaultListModel;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
@@ -170,6 +171,10 @@ public class Hiero extends JFrame {
 	JScrollPane effectsScroll;
 	JPanel unicodePanel, bitmapPanel;
 
+	DefaultListModel fallbackFontListModel;
+	JList fallbackFontList;
+	JButton addFallbackFontButton, removeFallbackFontButton;
+
 	public Hiero (String[] args) {
 		super("Hiero v5 - Bitmap Font Tool");
 		initialize();
@@ -304,6 +309,19 @@ public class Hiero extends JFrame {
 		unicodeFont.setPaddingAdvanceY(((Number)padAdvanceYSpinner.getValue()).intValue());
 		unicodeFont.setGlyphPageWidth(((Number)glyphPageWidthCombo.getSelectedItem()).intValue());
 		unicodeFont.setGlyphPageHeight(((Number)glyphPageHeightCombo.getSelectedItem()).intValue());
+
+		// Add fallback fonts (only applicable for Java/Native rendering).
+		for (int i = 0, n = fallbackFontListModel.getSize(); i < n; i++) {
+			String path = (String)fallbackFontListModel.getElementAt(i);
+			try {
+				Font fbFont = Font.createFont(Font.TRUETYPE_FONT, new File(path));
+				fbFont = fbFont.deriveFont((float)((Integer)fontSizeSpinner.getValue()).intValue());
+				unicodeFont.addFallbackFont(fbFont);
+			} catch (Throwable ex) {
+				System.err.println("Failed to load fallback font: " + path);
+				ex.printStackTrace();
+			}
+		}
 		if (isNative)
 			unicodeFont.setRenderType(RenderType.Native);
 		else if (isFreeType) {
@@ -360,6 +378,10 @@ public class Hiero extends JFrame {
 			settings.setRenderType(RenderType.FreeType.ordinal());
 		else
 			settings.setRenderType(RenderType.Java.ordinal());
+		List<String> fallbackPaths = new ArrayList<>();
+		for (int i = 0, n = fallbackFontListModel.getSize(); i < n; i++)
+			fallbackPaths.add((String)fallbackFontListModel.getElementAt(i));
+		settings.setFallbackFonts(fallbackPaths);
 		for (Iterator iter = effectPanels.iterator(); iter.hasNext();) {
 			EffectPanel panel = (EffectPanel)iter.next();
 			settings.getEffects().add(panel.getEffect());
@@ -405,6 +427,10 @@ public class Hiero extends JFrame {
 
 		fontFileRadio.setSelected(settings.isFont2Active());
 		systemFontRadio.setSelected(!settings.isFont2Active());
+
+		fallbackFontListModel.clear();
+		for (String path : settings.getFallbackFonts())
+			fallbackFontListModel.addElement(path);
 
 		for (Iterator iter = settings.getEffects().iterator(); iter.hasNext();) {
 			ConfigurableEffect settingsEffect = (ConfigurableEffect)iter.next();
@@ -545,6 +571,40 @@ public class Hiero extends JFrame {
 				String fileName = dialog.getFile();
 				if (fileName == null) return;
 				fontFileText.setText(new File(dialog.getDirectory(), fileName).getAbsolutePath());
+			}
+		});
+
+		addFallbackFontButton.addActionListener(new ActionListener() {
+			public void actionPerformed (ActionEvent evt) {
+				FileDialog dialog = new FileDialog(Hiero.this, "Choose fallback TrueType font file", FileDialog.LOAD);
+				dialog.setLocationRelativeTo(null);
+				dialog.setFile("*.ttf");
+				dialog.setDirectory(prefs.get("dir.font", ""));
+				dialog.setVisible(true);
+				if (dialog.getDirectory() != null) {
+					prefs.put("dir.font", dialog.getDirectory());
+				}
+				String fileName = dialog.getFile();
+				if (fileName == null) return;
+				String filePath = new File(dialog.getDirectory(), fileName).getAbsolutePath();
+				fallbackFontListModel.addElement(filePath);
+				updateFont();
+			}
+		});
+
+		removeFallbackFontButton.addActionListener(new ActionListener() {
+			public void actionPerformed (ActionEvent evt) {
+				int idx = fallbackFontList.getSelectedIndex();
+				if (idx >= 0) {
+					fallbackFontListModel.remove(idx);
+					updateFont();
+				}
+			}
+		});
+
+		fallbackFontList.addListSelectionListener(new ListSelectionListener() {
+			public void valueChanged (ListSelectionEvent evt) {
+				removeFallbackFontButton.setEnabled(fallbackFontList.getSelectedIndex() >= 0);
 			}
 		});
 
@@ -826,6 +886,35 @@ public class Hiero extends JFrame {
 			buttonGroup.add(javaRadio);
 			buttonGroup.add(nativeRadio);
 			javaRadio.setSelected(true);
+
+			{
+				fontPanel.add(new JLabel("Fallback:"), new GridBagConstraints(0, 5, 1, 1, 0.0, 0.0, GridBagConstraints.NORTHEAST,
+					GridBagConstraints.NONE, new Insets(0, 0, 5, 5), 0, 0));
+			}
+			{
+				JPanel fallbackPanel = new JPanel(new GridBagLayout());
+				fontPanel.add(fallbackPanel, new GridBagConstraints(1, 5, 3, 1, 1.0, 0.0, GridBagConstraints.CENTER,
+					GridBagConstraints.BOTH, new Insets(0, 0, 5, 5), 0, 0));
+				{
+					fallbackFontListModel = new DefaultListModel();
+					fallbackFontList = new JList(fallbackFontListModel);
+					fallbackFontList.setVisibleRowCount(3);
+					JScrollPane fallbackScroll = new JScrollPane(fallbackFontList);
+					fallbackPanel.add(fallbackScroll, new GridBagConstraints(0, 0, 1, 2, 1.0, 1.0, GridBagConstraints.CENTER,
+						GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0));
+				}
+				{
+					addFallbackFontButton = new JButton("Add");
+					fallbackPanel.add(addFallbackFontButton, new GridBagConstraints(1, 0, 1, 1, 0.0, 0.0, GridBagConstraints.NORTH,
+						GridBagConstraints.HORIZONTAL, new Insets(0, 0, 2, 0), 0, 0));
+				}
+				{
+					removeFallbackFontButton = new JButton("Remove");
+					removeFallbackFontButton.setEnabled(false);
+					fallbackPanel.add(removeFallbackFontButton, new GridBagConstraints(1, 1, 1, 1, 0.0, 1.0, GridBagConstraints.NORTH,
+						GridBagConstraints.HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
+				}
+			}
 		}
 		{
 			JPanel samplePanel = new JPanel();

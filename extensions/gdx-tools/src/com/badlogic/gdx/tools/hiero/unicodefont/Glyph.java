@@ -38,8 +38,15 @@ public class Glyph {
 	private int xOffset, xAdvance;
 	Texture texture;
 
+	Font glyphFont; // null means use the primary font from UnicodeFont
+
 	Glyph (int codePoint, Rectangle bounds, GlyphVector vector, int index, UnicodeFont unicodeFont) {
+		this(codePoint, bounds, vector, index, unicodeFont, null);
+	}
+
+	Glyph (int codePoint, Rectangle bounds, GlyphVector vector, int index, UnicodeFont unicodeFont, Font glyphFont) {
 		this.codePoint = codePoint;
+		this.glyphFont = glyphFont;
 
 		int padTop = unicodeFont.getPaddingTop(), padBottom = unicodeFont.getPaddingBottom();
 		int padLeft = unicodeFont.getPaddingLeft(), padRight = unicodeFont.getPaddingRight();
@@ -60,6 +67,8 @@ public class Glyph {
 			}
 
 		} else {
+			Font effectiveFont = glyphFont != null ? glyphFont : unicodeFont.getFont();
+
 			GlyphMetrics metrics = vector.getGlyphMetrics(index);
 			int lsb = (int)metrics.getLSB();
 			if (lsb > 0) lsb = 0;
@@ -78,7 +87,7 @@ public class Glyph {
 			// characters (e.g. Punjabi's "ਜੇ", or "\u0A1C\u0A47") that require the context of surrounding glyphs to
 			// determine spacing, but this is the best we can do with the BMFont format.
 			char[] chars = Character.toChars(codePoint);
-			GlyphVector charVector = unicodeFont.getFont().layoutGlyphVector(GlyphPage.renderContext, chars, 0, chars.length,
+			GlyphVector charVector = effectiveFont.layoutGlyphVector(GlyphPage.renderContext, chars, 0, chars.length,
 				Font.LAYOUT_LEFT_TO_RIGHT);
 			GlyphMetrics charMetrics = charVector.getGlyphMetrics(0);
 			xOffset = charVector.getGlyphPixelBounds(0, GlyphPage.renderContext, 0, 0).x - unicodeFont.getPaddingLeft();
@@ -87,7 +96,7 @@ public class Glyph {
 
 			shape = vector.getGlyphOutline(index, -bounds.x + unicodeFont.getPaddingLeft(), -bounds.y + unicodeFont.getPaddingTop());
 
-			isMissing = !unicodeFont.getFont().canDisplay((char)codePoint);
+			isMissing = !effectiveFont.canDisplay((char)codePoint);
 		}
 	}
 

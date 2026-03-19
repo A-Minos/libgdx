@@ -178,7 +178,8 @@ public class GlyphPage {
 					if (effect instanceof ColorEffect) scratchGraphics.setColor(((ColorEffect)effect).getColor());
 				}
 				scratchGraphics.setColor(java.awt.Color.white);
-				scratchGraphics.setFont(unicodeFont.getFont());
+				java.awt.Font renderFont = glyph.glyphFont != null ? glyph.glyphFont : unicodeFont.getFont();
+				scratchGraphics.setFont(renderFont);
 				scratchGraphics.drawString("" + (char)glyph.getCodePoint(), 0, unicodeFont.getAscent());
 			} else if (unicodeFont.getRenderType() == RenderType.Java) {
 				scratchGraphics.setColor(java.awt.Color.white);

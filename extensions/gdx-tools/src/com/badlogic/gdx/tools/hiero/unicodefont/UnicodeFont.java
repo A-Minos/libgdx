@@ -27,6 +27,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +81,10 @@ public class UnicodeFont {
 	private GlyphLayout layout;
 	private boolean mono;
 	private float gamma;
+
+	private final List<Font> fallbackFonts = new ArrayList<>();
+	private final Map<Integer, Glyph> fallbackGlyphMap = new HashMap<>();
+	private final Map<Integer, Rectangle> fallbackBoundsMap = new HashMap<>();
 
 	/** @param ttfFileRef The file system or classpath location of the TrueTypeFont file.
 	 * @param hieroFileRef The file system or classpath location of the Hiero settings file. */
@@ -177,6 +182,11 @@ public class UnicodeFont {
 		GlyphVector vector = font.layoutGlyphVector(GlyphPage.renderContext, chars, 0, chars.length, Font.LAYOUT_LEFT_TO_RIGHT);
 		for (int i = 0, n = vector.getNumGlyphs(); i < n; i++) {
 			int codePoint = text.codePointAt(vector.getGlyphCharIndex(i));
+			// Use a fallback font if the primary font cannot display this character.
+			if (!fallbackFonts.isEmpty() && !font.canDisplay(codePoint)) {
+				getFallbackGlyph(codePoint);
+				continue;
+			}
 			Rectangle bounds = getGlyphBounds(vector, i, codePoint);
 			getGlyph(vector.getGlyphCode(i), codePoint, bounds, vector, i);
 		}
@@ -331,17 +341,26 @@ public class UnicodeFont {
 
 			int codePoint = text.codePointAt(charIndex);
 
-			Rectangle bounds = getGlyphBounds(vector, glyphIndex, codePoint);
-			bounds.x += offsetX;
-			Glyph glyph = getGlyph(vector.getGlyphCode(glyphIndex), codePoint, bounds, vector, glyphIndex);
+			Rectangle bounds;
+			Glyph glyph;
+			// Use fallback glyph when the primary font cannot display this character.
+			if (!fallbackFonts.isEmpty() && !font.canDisplay(codePoint) && fallbackBoundsMap.containsKey(codePoint)) {
+				bounds = new Rectangle(fallbackBoundsMap.get(codePoint));
+				bounds.x += offsetX;
+				glyph = fallbackGlyphMap.get(codePoint);
+			} else {
+				bounds = getGlyphBounds(vector, glyphIndex, codePoint);
+				bounds.x += offsetX;
+				glyph = getGlyph(vector.getGlyphCode(glyphIndex), codePoint, bounds, vector, glyphIndex);
+			}
 
 			if (startNewLine && codePoint != '\n') {
 				extraX = -bounds.x;
 				startNewLine = false;
 			}
 
-			if (glyph.getTexture() == null && missingGlyph != null && glyph.isMissing()) glyph = missingGlyph;
-			if (glyph.getTexture() != null) {
+			if (glyph != null && glyph.getTexture() == null && missingGlyph != null && glyph.isMissing()) glyph = missingGlyph;
+			if (glyph != null && glyph.getTexture() != null) {
 				// Draw glyph, only binding a new glyph page texture when necessary.
 				Texture texture = glyph.getTexture();
 				if (lastBind != null && lastBind != texture) {
@@ -496,6 +515,55 @@ public class UnicodeFont {
 	/** Returns the TrueTypeFont for this UnicodeFont. */
 	public Font getFont () {
 		return font;
+	}
+
+	/** Adds a fallback font to be used when the primary font cannot display a character. Fallback fonts are tried in the order
+	 * they are added. Fallback fonts are only used for Java and Native rendering types. */
+	public void addFallbackFont (Font fallbackFont) {
+		fallbackFonts.add(fallbackFont);
+	}
+
+	/** Removes all fallback fonts. */
+	public void clearFallbackFonts () {
+		fallbackFonts.clear();
+		fallbackGlyphMap.clear();
+		fallbackBoundsMap.clear();
+	}
+
+	/** Returns the list of fallback fonts. */
+	public List<Font> getFallbackFonts () {
+		return fallbackFonts;
+	}
+
+	/** Returns the first font (primary or fallback) that can display the given codePoint, or null if none can. */
+	public Font getFontForCodePoint (int codePoint) {
+		if (font.canDisplay(codePoint)) return font;
+		for (Font fb : fallbackFonts) {
+			if (fb.canDisplay(codePoint)) return fb;
+		}
+		return null;
+	}
+
+	/** Returns (and queues for loading) a glyph from the appropriate fallback font for the given codePoint. Returns null if no
+	 * fallback font can display the character. */
+	public Glyph getFallbackGlyph (int codePoint) {
+		Glyph existing = fallbackGlyphMap.get(codePoint);
+		if (existing != null) return existing;
+
+		Font fallbackFont = getFontForCodePoint(codePoint);
+		if (fallbackFont == null || fallbackFont == font) return null;
+
+		char[] chars = Character.toChars(codePoint);
+		GlyphVector fbVector = fallbackFont.layoutGlyphVector(GlyphPage.renderContext, chars, 0, chars.length,
+			Font.LAYOUT_LEFT_TO_RIGHT);
+		Rectangle bounds = fbVector.getGlyphPixelBounds(0, GlyphPage.renderContext, 0, 0);
+		if (codePoint == ' ') bounds.width = fbVector.getGlyphLogicalBounds(0).getBounds().width;
+
+		fallbackBoundsMap.put(codePoint, new Rectangle(bounds));
+		Glyph glyph = new Glyph(codePoint, bounds, fbVector, 0, this, fallbackFont);
+		fallbackGlyphMap.put(codePoint, glyph);
+		if (!glyph.isMissing()) queuedGlyphs.add(glyph);
+		return glyph;
 	}
 
 	/** Returns the padding above a glyph on the GlyphPage to allow for effects to be drawn. */

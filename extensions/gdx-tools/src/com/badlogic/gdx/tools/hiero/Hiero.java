@@ -1454,7 +1454,8 @@ public class Hiero extends JFrame {
 
 			batch = new SpriteBatch();
 
-			sampleNeheButton.doClick();
+			// Only set the default NEHE sample text if no text was already loaded (e.g. via --input).
+			if (sampleTextPane.getText().isEmpty()) sampleNeheButton.doClick();
 		}
 
 		public void resize (int width, int height) {
